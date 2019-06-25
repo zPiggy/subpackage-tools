@@ -1,0 +1,111 @@
+<html>
+
+<div id="view" class="scroll">
+    <ui-section>
+        <div class="header greenColor">主包配置</div>
+        <div class="layout vertical start-justified">
+            <ui-prop name="包名+中文包名" tooltip="规定主包名为Main 主包将会一起生成在子包存储目录中">
+                <div class="flex-1 layout horizontal center">
+                    <ui-input class="flex-1" v-value="mainName" readonly disabled></ui-input>
+                    <ui-input class="flex-1" v-value="mainZhName" readonly disabled></ui-input>
+                </div>
+            </ui-prop>
+
+            <ui-prop name="版本号" tooltip="主包版本号">
+                <div class="flex-1 layout horizontal center">
+                    <ui-input class="flex-1" v-value="mainVersion"></ui-input>
+                </div>
+            </ui-prop>
+
+            <ui-prop name="资源服务器url" tooltip="游戏热更新服务器的url">
+                <div class="flex-1 layout horizontal center">
+                    <ui-input class="flex-2" v-value="mainPackageUrl"></ui-input>
+                </div>
+            </ui-prop>
+
+            <ui-prop name="build项目资源文件目录" tooltip="有res和src的目录 不是build根目录">
+                <div class="flex-1 layout horizontal center">
+                    <ui-input class="flex-2" readonly disabled v-value="buildPath"></ui-input>
+                    <ui-button v-on:confirm="buildPath=selectDir()">选择</ui-button>
+                    <ui-button v-on:confirm="openDir(buildPath)">
+                        <i class="icon-doc-text" tooltip="打开"></i>
+                    </ui-button>
+                </div>
+            </ui-prop>
+
+            <ui-prop name="子包存储路径" tooltip="以包名分目录存储主包和所有子包资源以及清单文件 此目录默认不可选，如有更改需求请直接修改config.json">
+                <div class="flex-1 layout horizontal center">
+                    <ui-input class="flex-2" readonly disabled v-value="packageSaveDir"></ui-input>
+                    <ui-button tooltip="打开">
+                        <i class="icon-doc-text"></i>
+                    </ui-button>
+                </div>
+            </ui-prop>
+        </div>
+
+    </ui-section>
+    <ui-section>
+        <div class="header greenColor ">子包配置</div>
+
+        <div indent="1">
+            <ui-section v-for="(index,pack) in packages">
+                <div class="header greenColor">子包{{index+1}}</div>
+                <div class="layout vertical start-justified">
+                    <ui-prop name="包名+中文包名">
+                        <div class="flex-1 layout horizontal center">
+                            <ui-input class="flex-1" v-value="pack.name"></ui-input>
+                            <ui-input class="flex-1" v-value="pack.zhName"></ui-input>
+                        </div>
+                    </ui-prop>
+                    <ui-prop name="私有" tooltip="表示当前子包资源是否对外开放,如果子包表示一个独立子游戏,它应该是一个私有包">
+                        <div class="flex-1 layout horizontal center">
+                            <ui-checkbox v-value="pack.isPrivate"></ui-checkbox>
+                        </div>
+                    </ui-prop>
+                    <ui-prop name="版本号">
+                        <div class="flex-1 layout horizontal center">
+                            <ui-input class="flex-1" v-value="pack.version"></ui-input>
+                        </div>
+                    </ui-prop>
+
+                    <ui-prop name="资源服务器url" tooltip="游戏热更新服务器的url">
+                        <div class="flex-1 layout horizontal center">
+                            <ui-input class="flex-2" v-value="pack.packageUrl"></ui-input>
+
+                        </div>
+                    </ui-prop>
+
+                    <ui-prop name="资源目录" tooltip="子包包含的所有资源目录,请确保所有子包资源独立" foldable>
+                        <ui-button class="green" v-on:confirm="addResDir(pack)">添加目录</ui-button>
+                        <div class="child">
+                            <div class="flex-1 layout horizontal" v-for="(idx,path) in pack.resDirs" track-by="$index">
+                                <ui-input class="flex-1" v-value="path"></ui-input>
+                                <ui-button v-on:confirm="onSelectSubResDir(pack.resDirs,idx)">选择目录</ui-button>
+                                <ui-button v-on:confirm="onSelectSubRes(pack.resDirs,idx)">选择文件</ui-button>
+
+                                <div @click="delResDir(pack,idx)">
+                                    <i class="icon-trash-empty"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </ui-prop>
+                </div>
+                <ui-button class="red" v-on:confirm="delSubpack(index)">删除子包配置</ui-button>
+
+            </ui-section>
+        </div>
+    </ui-section>
+    <ui-button v-on:confirm="addSubpack">添加子包</ui-button>
+
+    <div class="self-end">
+        <ui-button class="self-end green" v-on:confirm="checkPrivate()">校验子包私有性</ui-button>
+    </div>
+    <div class="self-end">
+        <ui-button class="self-end green" v-on:confirm="saveConfig()">保存当前配置</ui-button>
+    </div>
+    <div class="self-end">
+        <ui-button class="self-end green" v-on:confirm="genInitSubPackManifest()">为当前所有子包生成初始化 manifest 文件</ui-button>
+    </div>
+</div>
+
+</html>

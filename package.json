@@ -1,0 +1,25 @@
+{
+  "name": "subpackage-tools",
+  "version": "1.0.1",
+  "description": "The package template for getting started.",
+  "author": "Cocos Creator",
+  "main": "main.js",
+  "main-menu": {
+    "i18n:MAIN_MENU.package.title/subpackage-tools": {
+      "message": "subpackage-tools:open"
+    }
+  },
+  "panel": {
+    "main": "panel/index.js",
+    "type": "dockable",
+    "title": "subpackage-tools",
+    "width": 400,
+    "height": 300
+  },
+  "dependencies": {
+    "fs": "0.0.1-security",
+    "path": "^0.12.7",
+    "shell": "^0.5.0",
+    "shelljs": "^0.8.3"
+  }
+}
