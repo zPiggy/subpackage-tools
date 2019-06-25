@@ -273,7 +273,7 @@ Editor.Panel.extend({
           totalCount = 0;
           let isError = false;
           for (let i = 0; i < this.packages.length; i++) {
-            if (!this.packages[i].isPrivate || i != 8) {
+            if (!this.packages[i].isPrivate) {
               continue;
             }
             for (let j = 0; j < this.packages[i].resDirs.length; j++) {
@@ -290,7 +290,7 @@ Editor.Panel.extend({
 
           this.packages.forEach((pack, packIndex) => {
             // Editor.log(pack.zhName);
-            if (!pack.isPrivate || packIndex != 8) {
+            if (!pack.isPrivate) {
               return;
             }
             pack.resDirs.forEach((dirOrFile, resDirIndex) => {
@@ -358,7 +358,7 @@ Editor.Panel.extend({
                   })
                 }
                 if (completeCount == totalCount) {
-                  Editor.success("检验结束");
+                  Editor.success("检验结束 " + (isError ? "失败" : "成功"));
                   if (typeof cb == "function") {
                     cb(isError);
                   }
