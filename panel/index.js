@@ -46,7 +46,7 @@ Editor.Panel.extend({
         mainName: "",
         mainZhName: "",
         mainVersion: "0.0.1",
-        mainPackageUrl: "127.0.0.1",
+        mainPackageUrl: "http://127.0.0.1",
         buildPath: "这是编译目录",  //编译目录
         mainManifestObj: {},
         packageSaveDir: Editor.Project.path + "/subPackage",
@@ -83,25 +83,32 @@ Editor.Panel.extend({
          * 包括清单文件已经res资源文件夹已经文件
          * @param {subPackageData} pack 子包配置信息
          */
-        generateSubpack() {
+        generateSubpack(callback) {
+          callback = callback || function () { };
           if (!this._checkBuildPath()) {
             Editor.error("请设置正确的 build 路径");
+            callback();
             return;
           }
 
           Editor.success("开始生成主包信息...");
           mainManifestObj = this._genVersion(this.mainVersion, this.mainPackageUrl, this.buildPath, this.packageSaveDir);
 
-          Editor.Ipc.sendToMain("subpackage-tools:getAutoAtlas", (err, data) => {
+          Editor.Ipc.sendToMain("subpackage-tools:getBuildResults", (err, data) => {
+            if (data.isMD5Cache) {
+              Editor.error("热更时 禁止 勾选 'MD5 Cache' 否则会造成代码(project.js)更新失效(下载成功但App任然使用旧代码)问题,具体查看热更官方文档以及论坛相关帖");
+              callback();
+              return;
+            }
             if (!err) {
               Editor.log("自动图集信息::", data.autoAtlas);
               this.packages.forEach((pack, index) => {
-                Editor.log("正在生成子包::" + pack.name)
+                Editor.log("正在分离出子包::" + pack.name)
                 packageSplit.generateSubpack(pack, mainManifestObj, this.buildPath, this.packageSaveDir, data.autoAtlas, data.buildResults);
                 Editor.log("完成");
               });
 
-              Editor.success("正在生成主包....");
+              Editor.log("正在生成主包....");
               packageSplit.generateMainPack({
                 name: this.mainName,
                 version: this.mainVersion,
@@ -112,10 +119,12 @@ Editor.Panel.extend({
               //保存配置文件
               // UtilConfig.saveConfigData(this.getConfigData());
               this.saveConfig();
-              Editor.log("所有工作完成");
+              Editor.success("成功分离所有子包资源");
+              callback();
             }
             else {
               Editor.error("获取项目构建结果失败,请先构建项目", err);
+              callback();
             }
           });
 
@@ -271,7 +280,7 @@ Editor.Panel.extend({
           let self = this;
           completeCount = 0;
           totalCount = 0;
-          let isError = false;
+          let isError = false;  // 标记是否存在引用私有子包资源的情况
           for (let i = 0; i < this.packages.length; i++) {
             if (!this.packages[i].isPrivate) {
               continue;
@@ -287,7 +296,6 @@ Editor.Panel.extend({
             }
             return;
           }
-
           this.packages.forEach((pack, packIndex) => {
             // Editor.log(pack.zhName);
             if (!pack.isPrivate) {
@@ -388,14 +396,15 @@ Editor.Panel.extend({
       Editor.success("开始检验子包私有性");
       this.vue.checkPrivate((isError) => {
         if (!isError) {
-          Editor.success("开始生成子包....");
-          this.vue.generateSubpack();
-          if (event.reply) {
-            event.reply();
-          }
+          this.vue.generateSubpack(() => {
+            // Editor.success("构建完成");
+            if (event.reply) {
+              event.reply();
+            }
+          });
         }
         else {
-          Editor.error("生成子包失败,私有子包间存在相互引用的情况");
+          Editor.error("生成子包失败,子包私有性校验失败");
           if (event.reply) {
             event.reply();
           }

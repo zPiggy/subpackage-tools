@@ -1,53 +1,62 @@
 'use strict';
 function onBuildFinish(options, callback) {
+  // 判断 子包分离插件是否打开
+  if (!Editor.Panel.findWindow("subpackage-tools")) {
+    callback();
+    return;
+  }
+  else {
+    Editor.log("子包工具[subpackage-tools]::获取项目自动图集[AutoAtlas]相关信息,并分离出配置好的子包资源. 如果不需要或对当前项目有所影响,关闭插件");
 
-  Editor.success("子包工具[subpackage-tools]::获取项目自动图集[AutoAtlas]相关信息. 如果不需要或对当前项目有所影响,请卸载此插件");
+    buildResults = options.buildResults;
 
-  buildResults = options.buildResults;
+    let uuids = buildResults.getAssetUuids();
+    for (let i = 0; i < uuids.length; i++) {
+      let uuid = uuids[i];
+      var url = Editor.assetdb.uuidToFspath(uuid);   // 获取不到资源路径的为 自动图集
+      if (!url) {
+        let nativeUrl = buildResults.getNativeAssetPath(uuid);
+        var depends = _getDependParentUuids(uuid, buildResults);    // 精灵帧集合
 
-
-  let uuids = buildResults.getAssetUuids();
-  for (let i = 0; i < uuids.length; i++) {
-    let uuid = uuids[i];
-    var url = Editor.assetdb.uuidToFspath(uuid);   // 获取不到资源路径的为 自动图集
-    if (!url) {
-      let nativeUrl = buildResults.getNativeAssetPath(uuid);
-      var depends = _getDependParentUuids(uuid, buildResults);    // 精灵帧集合
-
-      let getResourcesDir = /.*resources\/([a-zA-Z0-9-_]+\/)+/g;  /** 目录仅支持数字字母英文横线下划线 */
-      let rootDir = "";
-      for (let j = 0; j < depends.length; j++) {
-        var url = Editor.assetdb.uuidToFspath(depends[j]);
-        let dir = url.match(getResourcesDir)[0];
-        if (!rootDir || rootDir.length >= dir.length) { // 目录最短的为自动图集的根目录
-          rootDir = dir;
+        let getResourcesDir = /.*resources\/([a-zA-Z0-9-_]+\/)+/g;  /** 目录仅支持数字字母英文横线下划线 */
+        let rootDir = "";
+        for (let j = 0; j < depends.length; j++) {
+          var url = Editor.assetdb.uuidToUrl(depends[j]);
+          let dir = url.match(getResourcesDir)[0];
+          if (!rootDir || rootDir.length >= dir.length) { // 目录最短的为自动图集的根目录
+            dir = Editor.assetdb.urlToFspath(dir);      // 转绝对路径
+            rootDir = dir;
+          }
+        }
+        Editor.log(`自动图集 ${nativeUrl} 所在目录 ${rootDir}`);
+        // 缓存起来等待分离
+        autoAtlas[uuid] = {
+          nativeUrl: nativeUrl,       // 编译后的路径
+          rootDir: rootDir,           // 自动图集所在路径
+          containsSubAssets: depends  // 图集包含的子图uuids
         }
       }
-      Editor.log(`自动图集 ${nativeUrl} 所在目录 ${rootDir}`);
-      // 缓存起来等待分离
-      autoAtlas[uuid] = {
-        nativeUrl: nativeUrl,       // 编译后的路径
-        rootDir: rootDir,           // 自动图集所在路径
-        containsSubAssets: depends  // 图集包含的子图uuids
+    }
+
+    Editor.log("项目的自动图集信息:: \n", autoAtlas);
+
+    Editor.Ipc.sendToPanel("subpackage-tools", '_generateSubpack', (error, p) => {
+      if (error && error.code === 'ETIMEOUT') {
+        Editor.warn("生成子包超时...请耐心等待日志提示 成功分离所有子包资源");
       }
-    }
+      callback();
+    }, 60 * 1000);  // 设置超时 1 分钟 
+
   }
-
-  Editor.log("项目的自动图集信息:: \n", autoAtlas);
-
-  // Editor.success("正在生成子包...");
-  // 开始生成子包
-
-  // 当子包工具未打开时 会请求超时
-  Editor.Ipc.sendToPanel("subpackage-tools", '_generateSubpack', (err, p) => {
-    if (err) {
-      // Editor.error(err);
-    }
-    callback();
-  });
-
 }
-
+function onBuildStart(options, callback) {
+  isMD5Cache = !!options.md5Cache;    // 切记热更新时不能勾选 md5Cache 问题版本 2.0.9 详见论坛
+  let actualPlatform = options.actualPlatform.toLocaleLowerCase();
+  if ((actualPlatform == "android" || actualPlatform == "ios") && isMD5Cache) {
+    // Editor.warn("当前发布平台:: " + actualPlatform + " 建议不要勾选 MD5Cache 如果有热更新需求请务必不能勾选MD5");
+  }
+  callback();
+}
 function _getTextureFromSpriteFrames(buildResults, assetInfos) {
   let textures = {};
   for (let i = 0; i < assetInfos.length; ++i) {
@@ -89,15 +98,18 @@ function _getDependParentUuids(uuid, buildResults) {
 
 let autoAtlas = Object.create(null);
 let buildResults = undefined;
+let isMD5Cache = false; // 切记热更新时不能勾选 md5Cache 问题版本 2.0.9 详见论坛
 
 module.exports = {
   load() {
     // Editor.log("加载成功, 项目编译时请始终保持此插件同时打开");
     Editor.Builder.on('build-finished', onBuildFinish);
+    Editor.Builder.on('build-start', onBuildStart);
   },
 
   unload() {
     Editor.Builder.removeListener('build-finished', onBuildFinish);
+    Editor.Builder.removeListener('build-start', onBuildStart);
   },
 
 
@@ -114,32 +126,23 @@ module.exports = {
       Editor.Panel.close('subpackage-tools');
     },
 
-    'getAutoAtlas'(event, ...args) {
+    'getBuildResults'(event, ...args) {
       if (typeof event.reply == "function") {
-        Editor.log("编译结果::", buildResults);
+        // Editor.log("编译结果::", buildResults);
         if (!buildResults) {
           event.reply("构建结果为空,请先构建项目");
         }
         else {
-          event.reply(null, { autoAtlas: autoAtlas, buildResults: buildResults });
+          event.reply(null, { autoAtlas: autoAtlas, buildResults: buildResults, isMD5Cache: isMD5Cache });
         }
       }
 
     },
-    "getBuildResults"(event, ...args) {
-      if (typeof event.reply == "function") {
-        event.reply(null, buildResults);
-      }
-    },
+
     "getProjectPath"(event, ...args) {
       if (typeof event.reply == "function") {
         event.reply(null, Editor.projectPath);
       }
-    },
-
-
-    'clicked'() {
-      Editor.log('Button clicked!');
     },
 
 
