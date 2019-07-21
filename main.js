@@ -1,3 +1,5 @@
+var Fs = require("fire-fs");
+var Path = require("fire-path");
 'use strict';
 function onBuildFinish(options, callback) {
   // 判断 子包分离插件是否打开
@@ -6,6 +8,8 @@ function onBuildFinish(options, callback) {
     return;
   }
   else {
+    Editor.log(options);
+    reBuildMainJs(options);
     Editor.log("子包工具[subpackage-tools]::获取项目自动图集[AutoAtlas]相关信息,并分离出配置好的子包资源. 如果不需要或对当前项目有所影响,关闭插件");
 
     buildResults = options.buildResults;
@@ -42,7 +46,7 @@ function onBuildFinish(options, callback) {
 
     Editor.Ipc.sendToPanel("subpackage-tools", '_generateSubpack', (error, p) => {
       if (error && error.code === 'ETIMEOUT') {
-        Editor.warn("生成子包超时...请耐心等待日志提示 成功分离所有子包资源");
+        Editor.warn("生成子包超时...如果没有错误,请耐心等待日志提示 成功分离所有子包资源");
       }
       callback();
     }, 60 * 1000);  // 设置超时 1 分钟 
@@ -56,6 +60,32 @@ function onBuildStart(options, callback) {
     // Editor.warn("当前发布平台:: " + actualPlatform + " 建议不要勾选 MD5Cache 如果有热更新需求请务必不能勾选MD5");
   }
   callback();
+}
+
+function reBuildMainJs(buildOptions) {
+  let buildDestPath = buildOptions.dest;
+  var root = Path.normalize(buildDestPath);
+  var url = Path.join(root, "main.js");
+  Fs.readFile(url, "utf8", function (err, data) {
+    if (err) {
+      throw err;
+    }
+    var newStr =
+      "\n" +
+      "if (window.jsb) { \n" +
+      "    var hotUpdateSearchPaths = localStorage.getItem('HotUpdateSearchPaths'); \n" +
+      "    if (hotUpdateSearchPaths) { \n" +
+      "        jsb.fileUtils.setSearchPaths(JSON.parse(hotUpdateSearchPaths)); \n" +
+      "    }\n" +
+      "}\n";
+    var newData = newStr + data;
+    Fs.writeFile(url, newData, function (error) {
+      if (err) {
+        throw err;
+      }
+      Editor.log("[subpackage-tools]::SearchPath updated in built main.js");
+    });
+  });
 }
 function _getTextureFromSpriteFrames(buildResults, assetInfos) {
   let textures = {};

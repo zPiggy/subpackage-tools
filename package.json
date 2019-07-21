@@ -17,9 +17,15 @@
     "height": 300
   },
   "dependencies": {
+    "shell": "^0.5.0"
+  },
+  "devDependencies": {
+    "@types/jszip": "^3.1.6",
+    "fire-fs": "^0.2.4",
+    "fire-path": "^0.1.9",
     "fs": "0.0.1-security",
+    "jszip": "^3.2.2",
     "path": "^0.12.7",
-    "shell": "^0.5.0",
     "shelljs": "^0.8.3"
   }
 }

@@ -2,10 +2,14 @@
 var fs = require('fire-fs');
 var path = require('path');
 var shell = require("shelljs");
+var JSZip = require('jszip');
+
 var UtilFs = Editor.require('packages://subpackage-tools/core/UtilFs.js');
 
 let PROJECT_FILE = "project.manifest";
 let VERSION_FILE = "version.manifest";
+
+let ZIP_COMMON_DATE = new Date(1);  // zip压缩时采用的公共 文件修改时间
 
 module.exports = {
 
@@ -16,13 +20,11 @@ module.exports = {
      * @param {string} buildPath 编译目录
      * @param {string} savePath 保存目录
      */
-    generateSubpack(packData, mainManifestObj, buildPath, savePath, autoAtlas, buildResults) {
+    generateSubpack(packData, mainManifestObj, buildPath, savePath, autoAtlas, buildResults, callback) {
         if (!mainManifestObj || typeof mainManifestObj === "string") {    //其他参数不做检测
             Editor.error("generateSubpack:: mainManifestObj 参数错误");
             return;
         }
-        //生成一个子包清单文件对象
-        let subManifestObj = this.generateManifestObj(packData);
         //根据子包名 生成一个子包资源目录
         let subDir = path.join(savePath, packData.name)
         UtilFs.rmdirSync_R(subDir);     // 先移除目录 在写入
@@ -31,6 +33,9 @@ module.exports = {
         let mainAssets = mainManifestObj.assets;
         // console.log(mainManifestObj)
         Editor.log(buildPath + " => " + subDir);
+        let zip;
+
+        // 将子包资源移动到对应子包目录
         packData.resDirs.forEach((dirOrFile, index) => {
             if (dirOrFile == "") {
                 Editor.warn("子包目录不存在::", dirOrFile);
@@ -51,8 +56,6 @@ module.exports = {
                 for (let key in mainAssets) {
                     if (key.indexOf(uuid) != -1) {
                         isExists = true;
-                        let d = mainAssets[key];
-                        subManifestObj.assets[key] = d; //保存到子包清单文件中
                         delete mainAssets[key];     //从主清单文件中移除
                         let newFilePath = path.join(savePath, packData.name, key);
                         let oldFilePath = path.join(buildPath, key);
@@ -67,30 +70,64 @@ module.exports = {
                     Editor.warn("主包清单列表不存在子包资源::" + uuid);
                 }
             })
-
-
         })
-        // console.log(mainAssets);
-        //子包清单文件写入
-        if (this.isEmptyObject(subManifestObj.assets)) {
-            Editor.error("警告::" + packData.name + "子包资源清单为空");
+
+        // 打包成 zip 
+        if (packData.zipImport || packData.zipRawassets) {
+            Editor.log("正在zip...");
+            let rootDir = path.join(subDir, "res");
+            let finish = 0;
+            let total = 0;
+            if (packData.zipImport) {
+                total++;
+                this.packageZip(rootDir, "import", (err) => {
+                    finish++;
+                    // 不管是不是成功, 移除被zip的目录
+                    UtilFs.rmdirSync_R(path.join(rootDir, "import"));
+                    if (err) {
+                        Editor.error("zip import 失败::" + packData.name, err);
+                    }
+                    else {
+                        Editor.log("zip import 成功::" + packData.name);
+                    }
+                    if (finish >= total) {
+                        callback && callback();
+                        callback = undefined;
+                    }
+                })
+            }
+            if (packData.zipRawassets) {
+                total++;
+                this.packageZip(rootDir, "raw-assets", (err) => {
+                    finish++;
+                    // 不管是不是成功, 移除被zip的目录
+                    UtilFs.rmdirSync_R(path.join(rootDir, "raw-assets"));
+                    if (err) {
+                        Editor.error("zip raw-assets 失败::" + packData.name, err);
+                    }
+                    else {
+                        Editor.log("zip raw-assets 成功::" + packData.name);
+                    }
+                    if (finish >= total) {
+                        callback && callback();
+                        callback = undefined;
+                    }
+                })
+            }
         }
-        fs.writeFileSync(path.join(subDir, PROJECT_FILE), JSON.stringify(subManifestObj));
-        let verManifest = this.generateManifestObj(packData);
-        delete verManifest.assets;
-        delete verManifest.searchPaths;
-        fs.writeFileSync(path.join(subDir, VERSION_FILE), JSON.stringify(verManifest));
-        //主清单文件在外部写入
+        else {
+            callback && callback();
+        }
 
     },
 
-    generateMainPack(packData, mainManifestObj, buildPath, savePath) {
+    generateMainPack(packData, mainManifestObj, buildPath, savePath, isDebug) {
         if (!mainManifestObj || typeof mainManifestObj === "string") {    //其他参数不做检测
             Editor.error("generateSubpack:: mainManifestObj 参数错误");
             return;
         }
         //生成一个子包清单文件对象
-        let subManifestObj = this.generateManifestObj(packData);
+        let subManifestObj = this.generateManifestObj(packData, isDebug);
         subManifestObj.assets = mainManifestObj.assets;
         //根据子包名 生成一个子包资源目录
         let subDir = path.join(savePath, packData.name)
@@ -104,14 +141,15 @@ module.exports = {
             Editor.error("警告::" + packData.name + "子包资源清单为空");
         }
         fs.writeFileSync(path.join(subDir, PROJECT_FILE), JSON.stringify(subManifestObj));
-        let verManifest = this.generateManifestObj(packData);
+        let verManifest = this.generateManifestObj(packData, isDebug);
         delete verManifest.assets;
         delete verManifest.searchPaths;
         fs.writeFileSync(path.join(subDir, VERSION_FILE), JSON.stringify(verManifest));
-        Editor.log("主包清单导入到项目");
+        let manifestPath = "db://assets/resources/Manifest/Main/";
+        Editor.log("主包清单导入到项目:: " + manifestPath);
         // 将版本文件导入到项目 assets 根目录
-        Editor.assetdb.createOrSave('db://assets/' + PROJECT_FILE, JSON.stringify(subManifestObj));
-        Editor.assetdb.createOrSave('db://assets/' + VERSION_FILE, JSON.stringify(verManifest));
+        Editor.assetdb.createOrSave(manifestPath + PROJECT_FILE, JSON.stringify(subManifestObj));
+        Editor.assetdb.createOrSave(manifestPath + VERSION_FILE, JSON.stringify(verManifest));
 
     },
 
@@ -120,20 +158,15 @@ module.exports = {
      * 生成一个manifest对象
      * @param {*} packData 
      */
-    generateManifestObj(packData) {
-        if (packData.packageUrl[packData.packageUrl.length - 1] != "/") {
-            packData.packageUrl = packData.packageUrl + "/";
+    generateManifestObj(packData, isDebug) {
+        let packageUrl = packData.packageUrl;
+        if (packageUrl[packageUrl.length - 1] != "/") {
+            packageUrl = packageUrl + "/";
         }
-        /**
-         * 此处存在一个小Bug http:// 会被 path.join 转换成 http:/
-         * 虽然可以被浏览器正确识别 但是在无法被 JAVA 代码: new URI(url)getHost()正确识别出 host ;
-         * 导致 安卓 平台相关报错 貌似 IOS 和 win 没有影响
-         * 
-         */
-        // let packageUrl = path.join(packData.packageUrl, packData.name);
-        // let remoteManifestUrl = path.join(packageUrl, PROJECT_FILE);
-        // let remoteVersionUrl = path.join(packageUrl, VERSION_FILE);
-        let packageUrl = packData.packageUrl + packData.name;
+        if (isDebug) {
+            packageUrl += "Debug/";
+        }
+        packageUrl = packageUrl + packData.name;
         let remoteManifestUrl = packageUrl + "/" + PROJECT_FILE;
         let remoteVersionUrl = packageUrl + "/" + VERSION_FILE;
 
@@ -224,6 +257,55 @@ module.exports = {
         }
         return res;
     },
+
+    zipDir(dir, zipObj) {
+        // Editor.log(dir);
+        let files = fs.readdirSync(dir);
+        // Editor.log("ok", files);
+        for (let i = 0; i < files.length; i++) {
+            let file = files[i];
+            if (file == "." || file == "..") {
+                continue;
+            }
+            let fullPath = path.join(dir, file);
+            let stat = fs.statSync(fullPath);
+            // console.log("判断文件类型::" + fullPath);
+            if (stat.isFile()) {
+                /**
+                 * zip文件的MD5会计算每一个文件的最后修改时间 由于子包中的每一个文件都是在每次构建时重新生成这将导致MD5始终不一致
+                 * 所以此处忽略文件的修改时间(写死一个固定的时间)
+                 */
+                zipObj.file(file, fs.readFileSync(fullPath), { date: ZIP_COMMON_DATE });
+            } else if (stat.isDirectory()) {
+                zipObj.file(file, null, { dir: true, date: ZIP_COMMON_DATE });
+                // Editor.log("这是一个目录::" + file);
+                this.zipDir(fullPath, zipObj.folder(file));
+            }
+        }
+    },
+
+    packageZip(rootDir, dir, callback) {
+        let zip = new JSZip();
+        zip.file(dir, null, { dir: true, date: ZIP_COMMON_DATE });
+
+        this.zipDir(path.join(rootDir, dir), zip.folder(dir));
+        let destFile = path.join(rootDir, dir + ".zip");
+
+        fs.existsSync(destFile) && (fs.unlinkSync(destFile));
+
+        zip.generateNodeStream({
+            type: "nodebuffer",
+            streamFiles: !0
+        }).pipe(fs.createWriteStream(destFile)).on("finish",
+            function () {
+                // Editor.error("zip成功:: " + packData.name);
+                callback && callback(null);
+            }.bind(this)).on("error",
+                function (e) {
+                    // Editor.error("zip失败:: " + packData.name, e);
+                    callback && callback(e);
+                }.bind(this));
+    }
 
 
 

@@ -1,4 +1,5 @@
-var fs = require('fire-fs');
+// var fs = require('fire-fs');
+var fs = require('fs');
 var path = require('path');
 
 var Electron = require('electron');
@@ -30,7 +31,7 @@ Editor.Panel.extend({
         if (configData) {
           this.mainName = configData.mainName || "Main";
           this.mainZhName = configData.mainZhName || "主包";
-
+          this.isDebug = configData.isDebug;
           this.mainVersion = configData.mainVersion;
           this.mainPackageUrl = configData.mainPackageUrl;
           this.buildPath = configData.buildPath;
@@ -51,10 +52,13 @@ Editor.Panel.extend({
         mainManifestObj: {},
         packageSaveDir: Editor.Project.path + "/subPackage",
         packages: [],
+        isDebug: false,
 
         subPackageData: {
           name: "",
           zhName: "",
+          zipImport: false,
+          zipRawassets: false,
           isPrivate: true,
           version: "",
           packageUrl: "",
@@ -67,6 +71,8 @@ Editor.Panel.extend({
           this.packages.push({
             name: "GG1",
             zhName: "游戏1",
+            zipImport: false,
+            zipRawassets: false,
             isPrivate: true,  // 默认子包都是私有的
             version: this.mainVersion,
             packageUrl: this.mainPackageUrl,
@@ -74,7 +80,7 @@ Editor.Panel.extend({
           });
         },
         delSubpack(index) {
-          if (confirm("确认要删除 子包" + (index + 1) + " 吗?") === true) {
+          if (confirm("确认要删除 子包 " + this.packages[index].name + " 吗?") === true) {
             this.packages.splice(index, 1);
           }
         },
@@ -83,44 +89,100 @@ Editor.Panel.extend({
          * 包括清单文件已经res资源文件夹已经文件
          * @param {subPackageData} pack 子包配置信息
          */
-        generateSubpack(callback) {
-          callback = callback || function () { };
+        generateSubpack(_callback) {
+          callback = function () {
+            if (typeof _callback == "function") {
+              _callback();
+              _callback = undefined;   // 防止多次回调
+            }
+          };
           if (!this._checkBuildPath()) {
             Editor.error("请设置正确的 build 路径");
             callback();
             return;
           }
+          try {
+            Editor.success("开始生成主包信息...");
+            let manifestBase = packageSplit.generateManifestObj({
+              name: this.mainName,
+              version: this.mainVersion,
+              zhName: this.mainZhName,
+              packageUrl: this.mainPackageUrl,
+            }, this.isDebug);
 
-          Editor.success("开始生成主包信息...");
-          mainManifestObj = this._genVersion(this.mainVersion, this.mainPackageUrl, this.buildPath, this.packageSaveDir);
-
+            mainManifestObj = this._genVersionObj(manifestBase, this.buildPath);
+          }
+          catch (error) {
+            Editor.error(error);
+            callback();
+            return;
+          }
           Editor.Ipc.sendToMain("subpackage-tools:getBuildResults", (err, data) => {
             if (data.isMD5Cache) {
               Editor.error("热更时 禁止 勾选 'MD5 Cache' 否则会造成代码(project.js)更新失效(下载成功但App任然使用旧代码)问题,具体查看热更官方文档以及论坛相关帖");
+              Editor.log("以上问题可以通过修改 main.js 和 setting.js 动态添加 project.js文件名以及动态判断当前构建是否勾选 MD5Cache 再加上构建模板功能解决");
+              Editor.log("如果你已经解决此问题,请直接修改插件代码,跳过判断");
               callback();
               return;
             }
             if (!err) {
               Editor.log("自动图集信息::", data.autoAtlas);
-              this.packages.forEach((pack, index) => {
-                Editor.log("正在分离出子包::" + pack.name)
-                packageSplit.generateSubpack(pack, mainManifestObj, this.buildPath, this.packageSaveDir, data.autoAtlas, data.buildResults);
-                Editor.log("完成");
-              });
 
-              Editor.log("正在生成主包....");
-              packageSplit.generateMainPack({
-                name: this.mainName,
-                version: this.mainVersion,
-                zhName: this.mainZhName,
-                packageUrl: this.mainPackageUrl,
-              }, mainManifestObj, this.buildPath, this.packageSaveDir);
+              try {
+                let finish = 0;
+                this.packages.forEach((pack, index) => {
+                  Editor.log("正在分离出子包::" + pack.name);
+                  let packageSaveDir = this.packageSaveDir;
+                  if (this.isDebug) {
+                    packageSaveDir = path.join(this.packageSaveDir, "Debug");
+                  }
 
-              //保存配置文件
-              // UtilConfig.saveConfigData(this.getConfigData());
-              this.saveConfig();
-              Editor.success("成功分离所有子包资源");
-              callback();
+                  packageSplit.generateSubpack(pack, mainManifestObj, this.buildPath, packageSaveDir, data.autoAtlas, data.buildResults, (err) => {
+                    finish++;
+                    if (err) {
+                      console.error("分离子包发生错误::" + pack.name)
+                      if (index == this.packages.length - 1) {
+                        callback();
+                      }
+                      return;
+                    }
+                    let subDir = path.join(packageSaveDir, pack.name);
+                    let manifestBaseObj = packageSplit.generateManifestObj(pack, this.isDebug);
+                    let subManifestObj = this._genVersionObj(manifestBaseObj, subDir);
+
+                    if (packageSplit.isEmptyObject(subManifestObj.assets)) {
+                      Editor.error("警告::" + packData.name + "子包资源清单为空");
+                    }
+                    fs.writeFileSync(path.join(subDir, PROJECT_FILE), JSON.stringify(subManifestObj));
+                    delete subManifestObj.assets;
+                    delete subManifestObj.searchPaths;
+                    fs.writeFileSync(path.join(subDir, VERSION_FILE), JSON.stringify(subManifestObj));
+                    Editor.log(pack.name + " 分离完成");
+
+                    // 完成所有子包打包工作
+                    if (finish >= this.packages.length) {
+                      Editor.log("正在生成主包.... ");
+                      packageSplit.generateMainPack({
+                        name: this.mainName,
+                        version: this.mainVersion,
+                        zhName: this.mainZhName,
+                        packageUrl: this.mainPackageUrl,
+                      }, mainManifestObj, this.buildPath, packageSaveDir, this.isDebug);
+                      this.genInitSubPackManifest();
+
+                      //保存配置文件
+                      this.saveConfig();
+                      Editor.success("成功分离所有子包资源");
+                      callback();
+                    }
+                  });
+                });
+              } catch (error) {
+                Editor.error(error);
+                callback();
+                return;
+              } finally {
+              }
             }
             else {
               Editor.error("获取项目构建结果失败,请先构建项目", err);
@@ -135,8 +197,9 @@ Editor.Panel.extend({
           pack.resDirs.push("");
         },
         delResDir(pack, index) {
-          // Editor.log(pack, pack.resDirs[index]);
-          pack.resDirs.splice(index, 1);
+          if (confirm("确认删除 资源目录\n" + pack.resDirs[index]) === true) {
+            pack.resDirs.splice(index, 1);
+          }
         },
         selectFile() {
           var filePath = UtilFs.selectFile();
@@ -171,12 +234,12 @@ Editor.Panel.extend({
           return {
             mainName: this.mainName,
             mainZhName: this.mainZhName,
-
             mainVersion: this.mainVersion,
             mainPackageUrl: this.mainPackageUrl,
             buildPath: this.buildPath,
             packageSaveDir: this.packageSaveDir,
-            packages: JSON.parse(JSON.stringify(this.packages)),
+            isDebug: this.isDebug,
+            packages: JSON.parse(JSON.stringify(this.packages))
           };
         },
 
@@ -185,42 +248,32 @@ Editor.Panel.extend({
         },
 
         genInitSubPackManifest() {
+          let rootDir = "db://assets/resources/Manifest/"
+
           this.packages.forEach((pack, packIndex) => {
-            let manifestObj = packageSplit.generateManifestObj(pack);
+            let manifestObj = packageSplit.generateManifestObj(pack, this.isDebug);
             manifestObj.version = "0.0.1";    // 默认最小版本号
             delete manifestObj.assets;
             delete manifestObj.searchPaths;
-            url = "db://assets/Manifest/" + pack.name + "/"
+            let url = rootDir + pack.name + "/"
             // 创建目录
             UtilFs.mkdirSync_R(Editor.url(url));
             Editor.assetdb.createOrSave(url + PROJECT_FILE, JSON.stringify(manifestObj));
             Editor.assetdb.createOrSave(url + VERSION_FILE, JSON.stringify(manifestObj));
-
           });
-          Editor.log("子包初始化 manifest 文件保存在 assets/Manifest/ 中");
+          let mainUrl = Editor.url(rootDir + "Main");
+          if (!fs.existsSync(mainUrl)) {
+            fs.mkdirSync(mainUrl);
+          }
+
+          Editor.log("子包初始化 manifest 文件保存在 " + rootDir);
         },
 
         /**
          * 生成热更新完整清单对象
          */
-        _genVersion(version, serverUrl, buildResourceDir, genManifestDir) {
-          let manifest = {
-            version: version,
-            packageUrl: serverUrl,
-            remoteManifestUrl: "",
-            remoteVersionUrl: "",
-            assets: {},
-            searchPaths: []
-          };
+        _genVersionObj(manifestBaseObj, buildResourceDir) {
 
-          if (serverUrl[serverUrl.length - 1] === "/") {
-            manifest.remoteManifestUrl = serverUrl + PROJECT_FILE;
-            manifest.remoteVersionUrl = serverUrl + VERSION_FILE;
-          } else {
-            manifest.remoteManifestUrl = serverUrl + "/" + PROJECT_FILE;
-            manifest.remoteVersionUrl = serverUrl + "/" + VERSION_FILE;
-          }
-          let dest = genManifestDir;
           let src = buildResourceDir;
 
           let readDir = function (dir, obj) {
@@ -259,10 +312,16 @@ Editor.Panel.extend({
             }
           };
 
-          readDir(path.join(src, 'src'), manifest.assets);
-          readDir(path.join(src, 'res'), manifest.assets);
+          let srcPath = path.join(src, 'src');
+          let resPath = path.join(src, 'res');
+          if (fs.existsSync(srcPath)) {
+            readDir(srcPath, manifestBaseObj.assets);
+          }
+          if (fs.existsSync(resPath)) {
+            readDir(resPath, manifestBaseObj.assets);
+          }
 
-          return manifest;
+          return manifestBaseObj;
         },
         /**
          * 校验私有包是否独立
