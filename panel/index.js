@@ -9,6 +9,9 @@ var UtilFs = Editor.require('packages://subpackage-tools/core/UtilFs.js');
 let PROJECT_FILE = "project.manifest";
 let VERSION_FILE = "version.manifest";
 
+
+
+
 // panel/index.js, this filename needs to match the one registered in package.json
 Editor.Panel.extend({
 
@@ -34,6 +37,7 @@ Editor.Panel.extend({
           this.isDebug = configData.isDebug;
           this.mainVersion = configData.mainVersion;
           this.mainPackageUrl = configData.mainPackageUrl;
+          this.manifestUrl = configData.manifestUrl;
           this.buildPath = configData.buildPath;
           this.packageSaveDir = configData.packageSaveDir;
           this.packages = configData.packages;
@@ -62,6 +66,7 @@ Editor.Panel.extend({
           isPrivate: true,
           version: "",
           packageUrl: "",
+          manifestUrl: "",
           resDirs: [],  //资源路径
         },
 
@@ -76,6 +81,7 @@ Editor.Panel.extend({
             isPrivate: true,  // 默认子包都是私有的
             version: this.mainVersion,
             packageUrl: this.mainPackageUrl,
+            // manifestUrl: this.manifestUrl,
             resDirs: [""],  //资源路径
           });
         },
@@ -108,6 +114,7 @@ Editor.Panel.extend({
               version: this.mainVersion,
               zhName: this.mainZhName,
               packageUrl: this.mainPackageUrl,
+              manifestUrl: this.manifestUrl,
             }, this.isDebug);
 
             mainManifestObj = this._genVersionObj(manifestBase, this.buildPath);
@@ -131,6 +138,9 @@ Editor.Panel.extend({
               try {
                 let finish = 0;
                 this.packages.forEach((pack, index) => {
+                  pack = JSON.parse(JSON.stringify(pack));
+                  pack.manifestUrl = this.manifestUrl;  // 补上清单文件地址
+
                   Editor.log("正在分离出子包::" + pack.name);
                   let packageSaveDir = this.packageSaveDir;
                   if (this.isDebug) {
@@ -167,6 +177,7 @@ Editor.Panel.extend({
                         version: this.mainVersion,
                         zhName: this.mainZhName,
                         packageUrl: this.mainPackageUrl,
+                        manifestUrl: this.manifestUrl,
                       }, mainManifestObj, this.buildPath, packageSaveDir, this.isDebug);
                       this.genInitSubPackManifest();
 
@@ -214,7 +225,7 @@ Editor.Panel.extend({
         },
         //选择子包资源目录
         onSelectSubResDir(resDirs, index) {
-          var dir = UtilFs.selectDir()
+          var dir = UtilFs.selectDir();
           resDirs.splice(index, 1, dir);  //解决arr[index] = newValue时  Vue无法检测到更新问题
         },
         //选择子包单个资源
@@ -236,6 +247,7 @@ Editor.Panel.extend({
             mainZhName: this.mainZhName,
             mainVersion: this.mainVersion,
             mainPackageUrl: this.mainPackageUrl,
+            manifestUrl: this.manifestUrl,
             buildPath: this.buildPath,
             packageSaveDir: this.packageSaveDir,
             isDebug: this.isDebug,
@@ -251,6 +263,10 @@ Editor.Panel.extend({
           let rootDir = "db://assets/resources/Manifest/"
 
           this.packages.forEach((pack, packIndex) => {
+
+            pack = JSON.parse(JSON.stringify(pack));
+            pack.manifestUrl = this.manifestUrl;  // 补上清单文件地址
+
             let manifestObj = packageSplit.generateManifestObj(pack, this.isDebug);
             manifestObj.version = "0.0.1";    // 默认最小版本号
             delete manifestObj.assets;

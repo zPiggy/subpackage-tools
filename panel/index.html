@@ -21,11 +21,16 @@
                     <ui-input class="flex-2" v-value="mainPackageUrl"></ui-input>
                 </div>
             </ui-prop>
+            <ui-prop name="Manifest文件url" tooltip="版本文件服务器的url">
+                <div class="flex-1 layout horizontal center">
+                    <ui-input class="flex-2" v-value="manifestUrl"></ui-input>
+                </div>
+            </ui-prop>
 
             <ui-prop name="build项目资源文件目录" tooltip="有res和src的目录 不是build根目录">
                 <div class="flex-1 layout horizontal center">
                     <ui-input class="flex-2" readonly disabled v-value="buildPath"></ui-input>
-                    <ui-button v-on:confirm="buildPath=selectDir()">选择</ui-button>
+                    <ui-button v-on:confirm="buildPath = selectDir()">选择</ui-button>
                     <ui-button v-on:confirm="openDir(buildPath)">
                         <i class="icon-doc-text" tooltip="打开"></i>
                     </ui-button>

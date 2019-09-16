@@ -1,6 +1,6 @@
 
-let fs = require('fs')
-let path = require('path')
+let fs = require('fs');
+let path = require('path');
 var Electron = require('electron');
 
 
@@ -98,6 +98,8 @@ module.exports = {
      * @param {string} dir 
      */
     openDir(dir) {
+        dir = this.getAbsolutePath(dir);
+
         if (!fs.existsSync(dir)) {
             Editor.log("目录不存在：" + dir);
             return;
@@ -151,4 +153,33 @@ module.exports = {
         }
         return "";
     },
+    /**
+     * 绝对路径转项目相对路径
+     */
+    getRelativePath(url) {
+        if (typeof url != "string") {
+            return "";
+        }
+        let root = Editor.Project.path;
+        let pathArr = url.split(root);
+        if (pathArr.length == 2) {
+            return pathArr[1];
+        }
+        return pathArr[0];
+    },
+    /**
+     * 获取绝对路径
+     */
+    getAbsolutePath(url) {
+        if (this.isAbsolutePath(url)) {
+            return url;
+        }
+        let aPath = path.join(Editor.Project.path, url);
+        return aPath;
+    },
+    isAbsolutePath(url) {
+        return url.indexOf(Editor.Project.path) == 0;
+    }
+
+
 }

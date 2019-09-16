@@ -160,15 +160,23 @@ module.exports = {
      */
     generateManifestObj(packData, isDebug) {
         let packageUrl = packData.packageUrl;
+        let manifestUrl = packData.manifestUrl;
         if (packageUrl[packageUrl.length - 1] != "/") {
             packageUrl = packageUrl + "/";
         }
+        if (manifestUrl[manifestUrl.length - 1] != "/") {
+            manifestUrl = manifestUrl + "/";
+        }
+
         if (isDebug) {
             packageUrl += "Debug/";
+            manifestUrl += "Debug/";
         }
         packageUrl = packageUrl + packData.name;
-        let remoteManifestUrl = packageUrl + "/" + PROJECT_FILE;
-        let remoteVersionUrl = packageUrl + "/" + VERSION_FILE;
+        manifestUrl = manifestUrl + packData.name;
+        // 单独设置 manifest 文件地址
+        let remoteManifestUrl = manifestUrl + "/" + PROJECT_FILE;
+        let remoteVersionUrl = manifestUrl + "/" + VERSION_FILE;
 
         let manifest = {
             version: packData.version,

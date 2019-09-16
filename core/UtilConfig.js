@@ -12,7 +12,7 @@ module.exports = {
      * 读取配置数据信息
      */
     getConfigData() {
-        let projectRoot = path.dirname(Editor.url("db://assets"));  // Editor.projectPath只能在主进程中使用 此处取巧获取项目根目录 
+        let projectRoot = Editor.Project.path;
 
         let confDir = path.join(projectRoot, this.CONF_PATH);
         let confPath = path.join(confDir, this.CONF_FILE_NAME);
@@ -25,7 +25,18 @@ module.exports = {
         }
         else {
             let res = fs.readFileSync(confPath, "utf8");
-            return JSON.parse(res);
+            let configData = JSON.parse(res);
+            // 将相对路径转绝对路径
+            configData.packageSaveDir = UtilFs.getAbsolutePath(configData.packageSaveDir);
+            configData.buildPath = UtilFs.getAbsolutePath(configData.buildPath);
+            let packages = configData.packages;
+            packages.forEach((pack, index) => {
+                for (let i = 0; i < pack.resDirs.length; i++) {
+                    pack.resDirs[i] = UtilFs.getAbsolutePath(pack.resDirs[i]);
+                }
+            });
+
+            return configData;
         }
 
     },
@@ -44,6 +55,17 @@ module.exports = {
         if (!fs.existsSync(confDir)) {
             UtilFs.mkdirSync_R(confDir);//创建一个目录
         }
+        // 绝对路径转相对路径
+        configData.packageSaveDir = UtilFs.getRelativePath(configData.packageSaveDir);
+        configData.buildPath = UtilFs.getRelativePath(configData.buildPath);
+        let packages = configData.packages;
+        packages.forEach((pack, index) => {
+            for (let i = 0; i < pack.resDirs.length; i++) {
+                pack.resDirs[i] = UtilFs.getRelativePath(pack.resDirs[i]);
+            }
+        });
+
+
         let ret = fs.writeFileSync(confPath, JSON.stringify(configData));
         Editor.log("配置文件保存成功 " + confPath);
     },
