@@ -24,7 +24,7 @@
     "fire-fs": "^0.2.4",
     "fire-path": "^0.1.9",
     "fs": "0.0.1-security",
-    "jszip": "^3.2.2",
+    "jszip": "^3.7.0",
     "path": "^0.12.7",
     "shelljs": "^0.8.3"
   }
